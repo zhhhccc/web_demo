@@ -210,6 +210,8 @@ Content-Type: application/json
 - 将模型、服务地址等配置迁移至合适的环境配置机制。
 - 扩展更多可控的 Agent 工具。
 
-## License
+## 其他
 
-尚未指定许可证。公开前请根据代码的来源、使用方式与希望授予他人的权限选择合适的开源许可证。
+### 实际运行截图与项目架构图在assets文件夹中
+- ![实际运行截图](assets/capture.png)
+- ![项目架构图](assets/architecture.png)
