@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>zhhccc Qwen 3.5 Demo1 </title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f5f5f7; display: flex; justify-content: center;
+    align-items: center; min-height: 100vh; padding: 20px;
+  }
+  .chat-container {
+    width: 100%; max-width: 760px; background: #fff; border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08); display: flex;
+    flex-direction: column; height: 85vh; max-height: 760px; overflow: hidden;
+  }
+  .chat-header {
+    padding: 14px 20px; background: #1a1a2e; color: #fff; font-weight: 600;
+    font-size: 15px; display: flex; justify-content: space-between; align-items: center;
+    gap: 10px;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .status { font-size: 12px; font-weight: 400; opacity: 0.8; }
+  .status.online { color: #4ade80; }
+  .status.offline { color: #f87171; }
+  .new-chat {
+    background: transparent; border: 1px solid rgba(255,255,255,0.3);
+    color: #fff; padding: 4px 10px; border-radius: 6px;
+    font-size: 12px; cursor: pointer;
+  }
+  .new-chat:hover { background: rgba(255,255,255,0.1); }
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 20px; display: flex;
+    flex-direction: column; gap: 12px; background: #fafafa;
+  }
+  .message {
+    max-width: 82%; padding: 10px 16px; border-radius: 12px;
+    line-height: 1.55; font-size: 14px; white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .message.user {
+    align-self: flex-end; background: #1a1a2e; color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .message.assistant {
+    align-self: flex-start; background: #fff; color: #1a1a2e;
+    border: 1px solid #e5e5e5; border-bottom-left-radius: 4px;
+  }
+  .message.assistant pre {
+    background: #1a1a2e; color: #e5e7eb; padding: 10px 12px;
+    border-radius: 8px; overflow-x: auto; margin: 6px 0; font-size: 12.5px;
+  }
+  .message.assistant code {
+    background: #f0f0f4; padding: 1px 5px; border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 12.5px;
+  }
+  .message.assistant pre code { background: transparent; padding: 0; }
+  .message.assistant .tool-call {
+    display: inline-block; font-size: 12px; color: #7c3aed;
+    background: #f3e8ff; padding: 2px 8px; border-radius: 6px;
+    margin: 2px 0;
+  }
+  .thinking { color: #888; font-style: italic; font-size: 13px; }
+  .chat-input-area {
+    padding: 14px 20px; border-top: 1px solid #eee; display: flex;
+    gap: 10px; background: #fff;
+  }
+  .chat-input-area input {
+    flex: 1; padding: 12px 16px; border: 1px solid #ddd;
+    border-radius: 10px; font-size: 14px; outline: none;
+    transition: border-color 0.2s;
+  }
+  .chat-input-area input:focus { border-color: #1a1a2e; }
+  .chat-input-area button {
+    padding: 12px 22px; background: #1a1a2e; color: #fff; border: none;
+    border-radius: 10px; font-size: 14px; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .chat-input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .chat-input-area button.stop { background: #b91c1c; }
+</style>
+</head>
+<body>
+<div class="chat-container">
+  <div class="chat-header">
+    <div class="header-left">
+      <span>zhhccc Qwen 3.5 demo1</span>
+      <span class="status" id="status">检测中...</span>
+    </div>
+    <button class="new-chat" id="newChatBtn">新对话</button>
+  </div>
+  <div class="chat-messages" id="messages"></div>
+  <div class="chat-input-area">
+    <input type="text" id="input" placeholder="输入消息，按回车发送..." autocomplete="off" />
+    <button id="sendBtn">发送</button>
+  </div>
+</div>
+
+<script>
+const API_BASE = '';
+
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const statusEl = document.getElementById('status');
+const newChatBtn = document.getElementById('newChatBtn');
+
+let isGenerating = false;
+let abortController = null;
+let conversation = [];
+
+function renderMarkdown(text) {
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function (_, lang, code) {
+    return '<pre><code>' + code.replace(/\n$/, '') + '</code></pre>';
+  });
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  return html;
+}
+
+function addMessage(text, role) {
+  const div = document.createElement('div');
+  div.className = 'message ' + role;
+  if (role === 'assistant') {
+    div.innerHTML = renderMarkdown(text);
+  } else {
+    div.textContent = text;
+  }
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return div;
+}
+
+function setGenerating(on) {
+  isGenerating = on;
+  sendBtn.disabled = false;
+  sendBtn.textContent = on ? '停止' : '发送';
+  sendBtn.classList.toggle('stop', on);
+  inputEl.disabled = false;
+}
+
+async function checkConnection() {
+  try {
+    const res = await fetch(API_BASE + '/health');
+    if (!res.ok) throw new Error('后端 HTTP 错误: ' + res.status);
+    const data = await res.json();
+
+    if (data.ollama) {
+      if (data.modelAvailable) {
+        statusEl.textContent = '已连接 · ' + data.model;
+        statusEl.className = 'status online';
+      } else {
+        statusEl.textContent = 'Ollama 在线，但未找到模型 ' + data.model;
+        statusEl.className = 'status offline';
+        statusEl.style.color = '#fbbf24'; // 黄色警告
+      }
+    } else {
+      statusEl.textContent = 'Ollama 未连接 (请检查隧道)';
+      statusEl.className = 'status offline';
+    }
+  } catch (e) {
+    console.error('健康检查失败:', e);
+    statusEl.textContent = '请求后端失败: ' + e.message;
+    statusEl.className = 'status offline';
+  }
+}
+
+async function sendMessage() {
+  if (isGenerating) {
+    if (abortController) abortController.abort();
+    return;
+  }
+
+  const text = inputEl.value.trim();
+  if (!text) return;
+
+  addMessage(text, 'user');
+  conversation.push({ role: 'user', content: text });
+  inputEl.value = '';
+
+  setGenerating(true);
+  const assistantEl = addMessage('思考中...', 'assistant');
+  assistantEl.classList.add('thinking');
+
+  abortController = new AbortController();
+
+  try {
+    const response = await fetch(API_BASE + '/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: conversation }),
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    assistantEl.classList.remove('thinking');
+    assistantEl.textContent = '';
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffer += decoder.decode(chunk.value, { stream: true });
+
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop();
+
+      for (let i = 0; i < parts.length; i++) {
+        const line = parts[i].trim();
+        if (line.indexOf('data:') !== 0) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+
+        try {
+          const evt = JSON.parse(payload);
+          if (evt.type === 'tool') {
+            const badge = document.createElement('span');
+            badge.className = 'tool-call';
+            badge.textContent = '🔧 调用工具: ' + evt.name;
+            assistantEl.parentNode.insertBefore(badge, assistantEl);
+          } else if (evt.type === 'content' && evt.text) {
+            fullText += evt.text;
+            assistantEl.innerHTML = renderMarkdown(fullText);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+          } else if (evt.type === 'error') {
+            fullText += '\n\n⚠️ ' + evt.message;
+            assistantEl.innerHTML = renderMarkdown(fullText);
+          }
+        } catch (err) {
+          // 跳过畸形事件
+        }
+      }
+    }
+
+    if (!fullText) assistantEl.textContent = '(空响应)';
+    conversation.push({ role: 'assistant', content: fullText });
+  } catch (e) {
+    assistantEl.classList.remove('thinking');
+    if (e.name === 'AbortError') {
+      assistantEl.textContent += '\n\n[已停止生成]';
+    } else {
+      assistantEl.textContent = '⚠️ 请求失败: ' + e.message;
+      conversation.pop();
+    }
+  } finally {
+    setGenerating(false);
+    abortController = null;
+    inputEl.focus();
+  }
+}
+
+sendBtn.addEventListener('click', sendMessage);
+
+inputEl.addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+newChatBtn.addEventListener('click', function () {
+  if (isGenerating && abortController) abortController.abort();
+  conversation = [];
+  messagesEl.innerHTML = '';
+  inputEl.focus();
+});
+
+checkConnection();
+inputEl.focus();
+</script>
+</body>
+</html>
