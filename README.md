@@ -181,9 +181,11 @@ Content-Type: application/json
 
 ```text
 .
-├── index.js              # Cloudflare Workers 后端
-├── qwennine_cloud.html   # 前端聊天页面
-└── README.md             # 项目说明
+├──src
+|    └──index.js                # Cloudflare Workers 后端
+├──public
+|     └── qwennine_cloud.html   # 前端聊天页面
+└── README.md                   # 项目说明
 ```
 
 当前项目将前端界面与后端逻辑分开放置。前端通过同源路径调用 `/health` 和 `/chat`，后端负责处理请求并连接 Ollama。
